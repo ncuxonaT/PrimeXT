@@ -243,7 +243,6 @@ struct trace_t
 
 #define TRANSFER_SCALE		(1.0f / TRANSFER_SCALE_VAL)
 #define INVERSE_TRANSFER_SCALE	(TRANSFER_SCALE_VAL)
-#define TRANSFER_SCALE_MAX		(65536.0f)
 #define MAX_COMPRESSED_TRANSFER_INDEX	( BIT( 12 ) - 1 )
 
 typedef struct
