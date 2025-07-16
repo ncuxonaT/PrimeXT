@@ -2603,9 +2603,7 @@ void RadWorld( void )
 		CreateFacelightDependencyList();
 
 		RunThreadsOnIndividual( g_numfaces, true, FacePatchLights );
-#ifdef HLRAD_VERTEXLIGHTING
-		//VertexPatchLights();
-#endif
+
 		FreeFacelightDependencyList();
 	}
 
@@ -2651,7 +2649,6 @@ void RadWorld( void )
 	WriteModelLighting();
 #endif
 #ifdef HLRAD_VERTEXLIGHTING
-	//FinalLightVertex();
 	UnparseEntities();
 #endif
 
