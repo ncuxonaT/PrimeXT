@@ -19,7 +19,7 @@
 #include "file_system.h"
 #include "utlarray.h"
 #include "compatibility_mode.h"
-#include "imagelib.h"	//nc add for sky
+#include "imagelib.h"
 
 #define DEFAULT_FASTMODE		false
 #define DEFAULT_EXTRAMODE		false
@@ -35,12 +35,16 @@
 #define DEFAULT_TEXREFLECTSCALE	1.0
 #define DEFAULT_BLUR			1.0
 #define DEFAULT_BOUNCE			8
-#define DEFAULT_LIGHTCLIP		196
+#define DEFAULT_STUDIO_BOUNCE	4
+#define DEFAULT_LIGHTCLIP		255
 #define DEFAULT_SMOOTHVALUE		50.0
 #define DEFAULT_INDIRECT_SUN	1.0
 #define DEFAULT_GAMMA			(1.0 / 2.2)
 #define DEFAULT_COMPAT_MODE		CompatibilityMode::PrimeXT
 #define DLIGHT_THRESHOLD		10.0
+#define DEFAULT_GLOBAL_SCALE	0.5f
+#define DEFAULT_LIGHTPROBE_EPSILON	0.1f
+#define	STUDIO_SURFACE_HIT		-2
 	
 // worldcraft predefined angles
 #define ANGLE_UP			-1
@@ -58,6 +62,9 @@
 #define SKYLEVELMAX				8
 #define SKYLEVEL_SOFTSKYON		7
 #define SKYLEVEL_SOFTSKYOFF		4
+#define SKYLEVEL_FASTSKY		6
+#define STUDIO_SAMPLES_PER_PASS	32
+#define STUDIO_SAMPLES_SKY		256
 #define SUNSPREAD_SKYLEVEL		7
 #define SUNSPREAD_THRESHOLD		15.0
 #define NUMVERTEXNORMALS		162
@@ -73,6 +80,8 @@
 // Paranoia settings
 #define LIGHTFLAG_NOT_NORMAL	2
 #define LIGHTFLAG_NOT_RENDERER	4
+
+#define HALF_FLOAT_TRANSFERS
 
 enum
 {
@@ -218,12 +227,18 @@ struct trace_t
 	int		contents;
 	float	fraction;		// time completed, 1.0 = didn't hit anything
 	int		surface;		// return the facenum
+
+	//gi from studiomodels
+	vec3_t	light[MAXLIGHTMAPS];
+	byte	styles[MAXLIGHTMAPS];
 };
 
-#ifdef HLRAD_SHRINK_MEMORY
-#define TRANSFER_SCALE_VAL		(1.0)
+#ifdef HALF_FLOAT_TRANSFERS
+#define TRANSFER_SCALE_VAL		(1.0f)
+#define TRANSFER_SCALE_MAX		M_PI2
 #else
 #define TRANSFER_SCALE_VAL		(16384)
+#define TRANSFER_SCALE_MAX		(65536.0f)
 #endif
 
 #define TRANSFER_SCALE		(1.0f / TRANSFER_SCALE_VAL)
@@ -237,7 +252,7 @@ typedef struct
 	uint	index : 20;
 } transfer_index_t;
 
-#ifdef HLRAD_SHRINK_MEMORY
+#ifdef HALF_FLOAT_TRANSFERS
 typedef half		transfer_data_t;
 #else
 typedef unsigned short	transfer_data_t;
@@ -279,6 +294,8 @@ typedef struct patch_s
 
 	transfer_index_t	*tIndex;
 	transfer_data_t		*tData;
+
+	vec_t		trans_sum;
 
 	// output
 	byte		totalstyle[MAXLIGHTMAPS];	// gives the styles for use by the new switchable totallight values
@@ -337,7 +354,19 @@ typedef struct
 {
 	unsigned short	numsamples;
 	sample_t		*samples;
+	vec3_t			average[MAXLIGHTMAPS];
+	vec3_t			texlight[MAXLIGHTMAPS];
 } facelight_t;
+
+typedef struct
+{
+	vec3_t		diffuse[MAXLIGHTMAPS];
+	vec3_t		average[MAXLIGHTMAPS];
+	int			styles[MAXLIGHTMAPS];
+	float		fraction;
+	dface_t		*surf;
+	bool		hitsky;
+} lightpoint_t;
 
 extern patch_t		*g_face_patches[MAX_MAP_FACES];
 extern entity_t		*g_face_entity[MAX_MAP_FACES];
@@ -357,7 +386,7 @@ extern size_t		g_transfer_data_size[MAX_THREADS];
 extern edgeshare_t		*g_edgeshare;
 extern patch_t		*g_patches;
 extern uint		g_num_patches;
-
+extern vec3_t		g_reflectivity[MAX_MAP_TEXTURES];
 //==============================================
 
 //==============================================
@@ -386,11 +415,35 @@ extern vec_t	g_gamma;
 extern vec_t	g_blur;
 extern size_t	g_compatibility_mode;
 
+extern bool		g_hdrcompresslog;
+extern bool		g_tonemap;
+extern bool		g_accurate_trans;
+extern bool		g_fastsky;
 extern bool		g_nolerp;	//cause dm changed how g_lerp_enabled works
+extern bool		g_envsky;
+extern bool		g_solidsky;
+extern bool		g_aa;
+extern bool		g_delambert;
+extern bool		g_worldspace;
+extern bool		g_studiobvh;
+extern vec_t	g_scale;
+extern rgbdata_t	*g_skytextures[6];
+extern vec_t	g_lightprobeepsilon;
+extern directlight_t	*g_skylights[256];
+extern int		g_numskylights;
+extern uint		g_numstudiobounce;
+extern bool		g_vertexblur;
+extern int		g_studiogipasscounter;
+extern vec3_t	*g_studioskynormals;
+extern int		g_numstudioskynormals;
+extern bool		g_noemissive;
+
 //
 // ambientcube.c
 //
 void ComputeLeafAmbientLighting( void );
+bool R_GetDirectLightFromSurface( dface_t *surf, const vec3_t point, lightpoint_t *info, bool no_texlight = false );
+
 
 //
 // facepos.c
@@ -440,6 +493,12 @@ void GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal );
 void GetPhongNormal2( int facenum, const vec3_t spot, vec3_t phongnormal );
 void FreeFaceLights( void );
 void ReduceLightmap( void );
+void LoadEnvSkyTextures( void );
+void FreeEnvSkyTextures( void );
+void GetEnvSkyColor( const vec3_t dir, vec3_t color );
+void GetSkyColor( const vec3_t dir, vec3_t color );
+void ApplyLightPostprocess( vec3_t lb, const float minlight = 1.0f );
+vec_t CalcFaceSolidAngle( dface_t *f, const vec3_t origin );
 
 //
 // lerp.c
@@ -453,13 +512,14 @@ extern void FreeTriangulations( void );
 // lightmap.c
 //
 void GatherSampleLight( int threadnum, int fn, const vec3_t pos, int leafnum, const vec3_t normal,
-vec3_t *s_light, vec3_t *s_dir, vec_t *s_occ, byte *styles, byte *vislight, bool topatch, entity_t *ignoreent = NULL );
+vec3_t *s_light, vec3_t *s_dir, vec_t *s_occ, byte *styles, byte *vislight, bool topatch, entity_t *ignoreent = NULL, const vec_t sky_visibility = 0.0f );
 void TexelSpaceToWorld( const lightinfo_t *l, vec3_t world, const vec_t s, const vec_t t );
 void WorldToTexelSpace( const lightinfo_t *l, const vec3_t world, vec_t &s, vec_t &t );
-int ParseLightIntensity( const char *pLight, vec3_t intensity, vec_t multiplier = 255.0 );
+int ParseLightIntensity( const char *pLight, vec3_t intensity );
 void TranslateWorldToTex( int facenum, matrix3x4 out );
 void InitLightinfo( lightinfo_t *pl, int facenum );
 vec_t *GetTotalLight( patch_t *patch, int style );
+vec_t *GetDirectLight( patch_t *patch, int style );
 vec_t *GetTotalDirection( patch_t *patch, int style );
 void ScaleDirectLights( void );
 void CreateFacelightDependencyList( void );
@@ -474,6 +534,7 @@ void CalcLuxelsCount( void );
 void BuildVertexLights( void );
 void VertexPatchLights( void );
 void FinalLightVertex( void );
+void VertexBlendGI( void );
 
 //
 // model_lightmaps.c
@@ -511,7 +572,7 @@ void TEX_FreeTextures( void );
 //
 void InitWorldTrace( void );
 int TestLine( int threadnum, const vec3_t start, const vec3_t end, bool nomodels = false, entity_t *ignoreent = NULL );
-void TestLine( int threadnum, const vec3_t start, const vec3_t stop, trace_t *trace );
+void TestLine( int threadnum, const vec3_t start, const vec3_t stop, trace_t *trace, bool nomodels = true, entity_t *ignoreent = NULL );
 void FreeWorldTrace( void );
 
 dleaf_t *PointInLeaf( const vec3_t point );
