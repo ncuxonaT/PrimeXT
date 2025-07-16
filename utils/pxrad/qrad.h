@@ -19,25 +19,26 @@
 #include "file_system.h"
 #include "utlarray.h"
 #include "compatibility_mode.h"
+#include "imagelib.h"	//nc add for sky
 
 #define DEFAULT_FASTMODE		false
 #define DEFAULT_EXTRAMODE		false
 #define DEFAULT_TEXSCALE		true
-#define DEFAULT_CHOP		128.0
-#define DEFAULT_TEXCHOP		32.0
-#define DEFAULT_DLIGHT_SCALE		2.0
+#define DEFAULT_CHOP			128.0
+#define DEFAULT_TEXCHOP			32.0
+#define DEFAULT_DLIGHT_SCALE	1.0
 #define DEFAULT_LIGHT_SCALE		1.0
-#define DEFAULT_LERP_ENABLED		false
+#define DEFAULT_LERP_ENABLED	false
 #define DEFAULT_WADTEXTURES		false
 #define DEFAULT_DIRTMAPPING		false
-#define DEFAULT_TEXREFLECTGAMMA	(1.0 / 2.2)	// turn back to linear space
+#define DEFAULT_TEXREFLECTGAMMA 2.2	// turn back to linear space
 #define DEFAULT_TEXREFLECTSCALE	1.0
-#define DEFAULT_BLUR		1.0
-#define DEFAULT_BOUNCE		3
+#define DEFAULT_BLUR			1.0
+#define DEFAULT_BOUNCE			8
 #define DEFAULT_LIGHTCLIP		196
 #define DEFAULT_SMOOTHVALUE		50.0
-#define DEFAULT_INDIRECT_SUN		1.0
-#define DEFAULT_GAMMA		0.5
+#define DEFAULT_INDIRECT_SUN	1.0
+#define DEFAULT_GAMMA			(1.0 / 2.2)
 #define DEFAULT_COMPAT_MODE		CompatibilityMode::PrimeXT
 #define DLIGHT_THRESHOLD		10.0
 	
@@ -45,7 +46,7 @@
 #define ANGLE_UP			-1
 #define ANGLE_DOWN			-2
 
-#define DIRECT_SCALE		0.1
+#define DIRECT_SCALE			0.1
 #define DEFAULT_HUNT_OFFSET		0.5
 #define DEFAULT_EDGE_WIDTH		0.8
 #define HUNT_WALL_EPSILON		(ON_EPSILON * 3)
@@ -54,23 +55,23 @@
 #define ACCURATEBOUNCE_THRESHOLD	4.0	// If the receiver patch is closer to emitter patch than
 					// EXACTBOUNCE_THRESHOLD * emitter_patch->radius, calculate the exact visibility amount.
 #define ACCURATEBOUNCE_DEFAULT_SKYLEVEL	5	// sample 1026 normals
-#define SKYLEVELMAX			8
+#define SKYLEVELMAX				8
 #define SKYLEVEL_SOFTSKYON		7
 #define SKYLEVEL_SOFTSKYOFF		4
 #define SUNSPREAD_SKYLEVEL		7
 #define SUNSPREAD_THRESHOLD		15.0
 #define NUMVERTEXNORMALS		162
-#define LF_SCALE			128.0	// TyrUtils magic value
+#define LF_SCALE				128.0	// TyrUtils magic value
 #define DEFAULT_GAMMAMODE		0
-#define FRAC_EPSILON		(1.0f / 32.0f)
+#define FRAC_EPSILON			(1.0f / 32.0f)
 
-#define MAX_SINGLEMAP		((MAX_CUSTOM_SURFACE_EXTENT+1) * (MAX_CUSTOM_SURFACE_EXTENT+1) * 3)
+#define MAX_SINGLEMAP			((MAX_CUSTOM_SURFACE_EXTENT+1) * (MAX_CUSTOM_SURFACE_EXTENT+1) * 3)
 #define MAX_SINGLEMAP_MODEL		((MAX_MODEL_SURFACE_EXTENT+1) * (MAX_MODEL_SURFACE_EXTENT+1) * 3)
-#define MAX_SUBDIVIDE		16384
-#define MAX_TEXLIGHTS		1024
+#define MAX_SUBDIVIDE			16384
+#define MAX_TEXLIGHTS			1024
 
 // Paranoia settings
-#define LIGHTFLAG_NOT_NORMAL		2
+#define LIGHTFLAG_NOT_NORMAL	2
 #define LIGHTFLAG_NOT_RENDERER	4
 
 enum
@@ -109,17 +110,17 @@ typedef struct dlight_s
 	vec_t		patch_emitter_range;
 	struct patch_s	*patch;
 	byte		*pvs;		// accumulated domain of the light
-	int		flags;		// buz: how to work without flags???
+	int			flags;		// buz: how to work without flags???
 
 	// sun spread stuff
 	vec_t		*sunnormalweights;
 	vec_t		sunspreadangle;
-	int		numsunnormals;
+	int			numsunnormals;
 	vec3_t		*sunnormals;
 
 // this part is shared with dworldlight_t
 	emittype_t	type;
-	int		style;
+	int			style;
 	vec_t		fade;		// falloff scaling 1.0 = normal, 0.5 = farther, 2.0 = shorter etc
 	byte		falloff;		// falloff style 0,2 = inverse square, 1 = inverse falloff
 	word		lightnum;		// worldlight number
@@ -132,7 +133,7 @@ typedef struct dlight_s
 	float		stopdot2;		// for spotlights
 	float		lf_scale;		// 1.0 for half-life, 128.0 for quake
 	bool		topatch;
-	int		facenum;
+	int			facenum;
 	word		modelnum;
 	float		radius;
 } directlight_t;
@@ -142,15 +143,15 @@ typedef struct
 	vec3_t		point;		// originally that called a surfpt
 	bool		occluded;		// luxel was occluded
 	vec3_t		position;
-	int		surface;
+	int			surface;
 } surfpt_t;
 
 typedef struct
 {
 	union
 	{
-	int		surfnum;
-	entity_t		*mapent;
+	int			surfnum;
+	entity_t	*mapent;
 	};
 
 	// reuse it for studiomodels
@@ -161,7 +162,7 @@ typedef struct
 	};
 	union
 	{
-	dface_t		*face;
+	dface_t			*face;
 	struct tmesh_t	*mesh;
 	};
 
@@ -193,12 +194,12 @@ typedef struct
 
 typedef struct 
 {
-	vec3_t		facenormal;	// face normal
-	int		numneighbors;	// neighboring faces that share vertices
-	int		*neighbor;	// neighboring face list (max of 64)
-	short		texmins[2];	// also used for face testing
+	vec3_t		facenormal;		// face normal
+	int			numneighbors;	// neighboring faces that share vertices
+	int			*neighbor;		// neighboring face list (max of 64)
+	short		texmins[2];		// also used for face testing
 	short		extents[2];
-	short		lightmapmins[2];	// lightmatrix
+	short		lightmapmins[2];// lightmatrix
 	short		lightextents[2];
 } faceneighbor_t;
 
@@ -209,13 +210,13 @@ typedef struct
 	vec3_t		vertex_normal[2];
 	bool		coplanar, smooth;
 	vec_t		cos_normals_angle;
-	matrix3x4		textotex[2];	// how we translate texture coordinates from one face to the other face
+	matrix3x4	textotex[2];	// how we translate texture coordinates from one face to the other face
 } edgeshare_t;
 
 struct trace_t
 {
 	int		contents;
-	float		fraction;		// time completed, 1.0 = didn't hit anything
+	float	fraction;		// time completed, 1.0 = didn't hit anything
 	int		surface;		// return the facenum
 };
 
@@ -256,12 +257,12 @@ typedef struct patch_s
 	vec_t		area;
 	vec_t		exposure;
 	vec_t		fade;
-	winding_t		*winding;
+	winding_t	*winding;
 	vec_t		scale;			// scaling of texture in s & t
 	byte		flags;
 	vec_t		chop;			// smallest acceptable width of patch face
-	int		leafnum;
-	int		faceNumber;
+	int			leafnum;
+	int			faceNumber;
 	word		modelnum;
 	word		lightnum;
 	vec_t		emitter_range;		// Range from patch origin (cached info calculated from winding)
@@ -277,7 +278,7 @@ typedef struct patch_s
 	uint		iData;
 
 	transfer_index_t	*tIndex;
-	transfer_data_t	*tData;
+	transfer_data_t		*tData;
 
 	// output
 	byte		totalstyle[MAXLIGHTMAPS];	// gives the styles for use by the new switchable totallight values
@@ -297,11 +298,11 @@ typedef struct
 {
 	// in local luxel space
 	bool		occluded;			// luxel was occluded
-	int		surface;			// this sample can grow into another face
+	int			surface;			// this sample can grow into another face
 #ifdef HLRAD_DELUXEMAPPING
 	hvec3_t		normal; 			// phong normal
 #endif
-	vec3_t		pos;			// in world units
+	vec3_t		pos;				// in world units
 
 	hvec3_t		light[MAXLIGHTMAPS];	// total lightvalue
 #ifdef HLRAD_DELUXEMAPPING
@@ -316,11 +317,11 @@ typedef struct
 {
 	// in local luxel space
 	bool		occluded;			// luxel was occluded
-	int		surface;			// this sample can grow into another face
+	int			surface;			// this sample can grow into another face
 #ifdef HLRAD_DELUXEMAPPING
 	vec3_t		normal; 			// phong normal
 #endif
-	vec3_t		pos;			// in world units
+	vec3_t		pos;				// in world units
 
 	vec3_t		light[MAXLIGHTMAPS];	// total lightvalue
 #ifdef HLRAD_DELUXEMAPPING
@@ -362,29 +363,30 @@ extern uint		g_num_patches;
 //==============================================
 
 extern bool		g_extra;
-extern vec3_t		g_ambient;
+extern vec3_t	g_ambient;
 extern bool		g_fastmode;
-extern float		g_maxlight;
+extern float	g_maxlight;
 extern uint		g_numbounce;
-extern vec_t		g_direct_scale;
-extern vec_t		g_indirect_scale;
-extern float		g_indirect_sun;
-extern float		g_smoothing_threshold;
+extern vec_t	g_direct_scale;
+extern vec_t	g_indirect_scale;
+extern float	g_indirect_sun;
+extern float	g_smoothing_threshold;
 extern bool		g_lightbalance;
 extern char		source[MAX_PATH];
 extern bool		g_lerp_enabled;
 extern bool		g_nomodelshadow;
-extern vec_t		g_smoothvalue;
+extern vec_t	g_smoothvalue;
 extern bool		g_drawsample;
 extern bool		g_wadtextures;
 extern bool		g_dirtmapping;
 extern bool		g_onlylights;
 extern int		g_numdlights;
 extern uint		g_gammamode;
-extern vec_t		g_gamma;
-extern vec_t		g_blur;
+extern vec_t	g_gamma;
+extern vec_t	g_blur;
 extern size_t	g_compatibility_mode;
 
+extern bool		g_nolerp;	//cause dm changed how g_lerp_enabled works
 //
 // ambientcube.c
 //

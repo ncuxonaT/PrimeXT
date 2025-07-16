@@ -22,9 +22,9 @@ every surface must be divided into at least two patches each axis
 */
 
 patch_t		*g_face_patches[MAX_MAP_FACES];
-entity_t		*g_face_entity[MAX_MAP_FACES];
+entity_t	*g_face_entity[MAX_MAP_FACES];
 vec_t		*g_skynormalsizes[SKYLEVELMAX+1];
-int		g_numskynormals[SKYLEVELMAX+1];
+int			g_numskynormals[SKYLEVELMAX+1];
 vec3_t		*g_skynormals[SKYLEVELMAX+1];
 patch_t		*g_patches;
 uint		g_num_patches;
@@ -36,11 +36,11 @@ static vec3_t	(*emitlight_dir)[MAXLIGHTMAPS];
 static vec3_t	(*addlight_dir)[MAXLIGHTMAPS];
 #endif
 vec3_t		g_face_offset[MAX_MAP_FACES];		// for rotating bmodels
-dplane_t		g_backplanes[MAX_MAP_PLANES];		// equal to MAX_MAP_FACES, there is no errors
-int		g_overflowed_styles_onface[MAX_THREADS];
-int		g_overflowed_styles_onpatch[MAX_THREADS];
-int		g_direct_luxels[MAX_THREADS];
-int		g_lighted_luxels[MAX_THREADS];
+dplane_t	g_backplanes[MAX_MAP_PLANES];		// equal to MAX_MAP_FACES, there is no errors
+int			g_overflowed_styles_onface[MAX_THREADS];
+int			g_overflowed_styles_onpatch[MAX_THREADS];
+int			g_direct_luxels[MAX_THREADS];
+int			g_lighted_luxels[MAX_THREADS];
 vec3_t		g_reflectivity[MAX_MAP_TEXTURES];
 bool		g_texture_init[MAX_MAP_TEXTURES];
 static winding_t	*g_windingArray[MAX_SUBDIVIDE];
@@ -57,6 +57,7 @@ vec_t		g_direct_scale = DEFAULT_DLIGHT_SCALE;
 vec_t		g_indirect_scale = DEFAULT_LIGHT_SCALE;
 vec_t		g_blur = DEFAULT_BLUR;
 vec_t		g_gamma = DEFAULT_GAMMA;
+bool		g_nolerp = false;
 bool		g_drawsample = false;
 vec3_t		g_ambient = { 0, 0, 0 };
 float		g_maxlight = DEFAULT_LIGHTCLIP;	// originally this was 196
@@ -1903,8 +1904,8 @@ static void MakeTransfers( int threadnum )
 	float		trans, total, dist;
 	bool		check_vis = true;
 	patch_t		*patch1, *patch2;
-	int		i, j, lastoffset;
-	int		count = 0;
+	int			i, j, lastoffset;
+	int			count = 0;
 	uint		*tIndex;
 	transfer_data_t	*tData;
 	vec3_t		delta;
@@ -2554,7 +2555,6 @@ int main( int argc, char **argv )
 		{
 			g_lerp_enabled = true;
 			g_extra = true;
-			g_blur = 1.5f;
 		}
 		else if( !Q_strcmp( argv[i], "-bounce" ))
 		{
@@ -2597,6 +2597,11 @@ int main( int argc, char **argv )
 			g_gamma = (float)atof( argv[i+1] );
 			i++;
 		}
+		else if( !Q_strcmp( argv[i], "-nolerp" ))
+		{
+			g_lerp_enabled = false;
+			g_nolerp = true;
+		}	
 		else if( !Q_strcmp( argv[i], "-chop" ))
 		{
 			g_chop = (float)atof( argv[i+1] );
