@@ -442,6 +442,7 @@ extern bool		g_noemissive;
 extern int		g_skystyle;
 extern bool		g_usingpatches;
 extern bool		g_patchaa;
+extern bool		g_perpixelsky;
 
 //
 // ambientcube.c
