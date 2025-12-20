@@ -52,6 +52,7 @@ list(APPEND CLDLL_SOURCES
 	"${CMAKE_SOURCE_DIR}/game_shared/mathlib.cpp"
 	"${CMAKE_SOURCE_DIR}/game_shared/matrix.cpp"
 	"${CMAKE_SOURCE_DIR}/game_shared/bounding_box.cpp"
+	"${CMAKE_SOURCE_DIR}/game_shared/frustum.cpp"
 	"${CMAKE_SOURCE_DIR}/game_shared/meshdesc.cpp"
 	"${CMAKE_SOURCE_DIR}/game_shared/meshdesc_factory.cpp"
 	"${CMAKE_SOURCE_DIR}/game_shared/playermove.cpp"
@@ -79,19 +80,17 @@ file(GLOB GAME_EVENTS_SOURCES "events/*.cpp")
 file(GLOB WEAPONS_SHARED_SOURCES "${CMAKE_SOURCE_DIR}/game_shared/weapons/*.cpp")
 
 # ImGui source files
-if(NOT ENABLE_VGUI_COMPATIBILITY)
-	list(APPEND IMGUI_SOURCES
-		"ui/vgui_support_int.cpp"
-		"ui/imgui_manager.cpp"
-		"ui/imgui_window_system.cpp"
-		"ui/ui_main.cpp"
-		"ui/ui_demo_window.cpp"
-		"ui/ui_material_editor.cpp"
-		"ui/ui_postfx_menu.cpp"
-	)
-	list(APPEND CLDLL_SOURCES ${IMGUI_SOURCES})
-endif()
+list(APPEND IMGUI_SOURCES
+	"ui/vgui_support_int.cpp"
+	"ui/imgui_manager.cpp"
+	"ui/imgui_window_system.cpp"
+	"ui/ui_main.cpp"
+	"ui/ui_demo_window.cpp"
+	"ui/ui_material_editor.cpp"
+	"ui/ui_postfx_menu.cpp"
+)
 
+list(APPEND CLDLL_SOURCES ${IMGUI_SOURCES})
 list(APPEND CLDLL_SOURCES ${RENDER_SOURCES})
 list(APPEND CLDLL_SOURCES ${ENTITIES_SOURCES})
 list(APPEND CLDLL_SOURCES ${GAME_EVENTS_SOURCES})
@@ -108,12 +107,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	"../game_shared"
 	"../public"
 )
-
-if(ENABLE_VGUI_COMPATIBILITY)
-	target_include_directories(${PROJECT_NAME} PRIVATE
-		"${CMAKE_SOURCE_DIR}/external/vgui/include"
-	)
-endif()
 
 if(HAVE_TGMATH_H)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_TGMATH_H=1)
@@ -163,21 +156,6 @@ endif()
 
 if(ENABLE_TRACY_PROFILER)
 	target_link_libraries(${PROJECT_NAME} PRIVATE tracy-client)
-endif()
-
-# linking vgui library if needed
-if(ENABLE_VGUI_COMPATIBILITY)
-	if(MSVC)
-		find_library(LIBRARY_VGUI
-			NAMES vgui
-			HINTS "${CMAKE_SOURCE_DIR}/external/vgui/lib"
-			PATH_SUFFIXES win32_vc6
-		)
-		target_link_libraries(${PROJECT_NAME} PRIVATE "${LIBRARY_VGUI}")
-	else()
-		target_link_directories(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/external/vgui/lib")
-		target_link_libraries(${PROJECT_NAME} PRIVATE :vgui.so)
-	endif()
 endif()
 
 # link dependency libraries
